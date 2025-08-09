@@ -18,6 +18,13 @@ const formUpdateSchema = z.object({
   isPublic: z.boolean().optional(),
 });
 
+const listQuerySchema = z.object({
+  page: z.string().optional().transform(v => (v ? parseInt(v, 10) : 1)).pipe(z.number().int().positive()),
+  pageSize: z.string().optional().transform(v => (v ? parseInt(v, 10) : 20)).pipe(z.number().int().min(1).max(200)),
+  order: z.enum(['asc', 'desc']).optional().default('desc'), // بر اساس submittedAt
+});
+
+
 // Create form
 router.post('/forms', async (req, res, next) => {
   try {
@@ -245,6 +252,55 @@ router.get('/forms/:formId/export.csv', async (req, res, next) => {
   }
 });
 
+router.get('/forms/:formId/responses', async (req, res, next) => {
+  try {
+    const formId = req.params.formId;
+    const { page, pageSize, order } = listQuerySchema.parse(req.query);
 
+    // وجود فرم را چک کن (اختیاری ولی بهتر)
+    const exists = await prisma.form.findUnique({ where: { id: formId }, select: { id: true } });
+    if (!exists) return res.status(404).json({ error: 'Form not found' });
+
+    const skip = (page - 1) * pageSize;
+
+    const [total, data] = await Promise.all([
+      prisma.response.count({ where: { formId } }),
+      prisma.response.findMany({
+        where: { formId },
+        include: {
+          items: {
+            include: {
+              question: { select: { id: true, title: true, type: true } },
+            },
+          },
+        },
+        orderBy: { submittedAt: order },
+        skip,
+        take: pageSize,
+      }),
+    ]);
+
+    res.json({
+      page,
+      pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+      data: data.map(r => ({
+        id: r.id,
+        submittedAt: r.submittedAt,
+        clientIp: r.clientIp,
+        userAgent: r.userAgent,
+        items: r.items.map(i => ({
+          id: i.id,
+          questionId: i.questionId,
+          questionTitle: i.question.title,
+          questionType: i.question.type,
+          valueText: i.valueText,
+          valueChoiceId: i.valueChoiceId,
+        })),
+      })),
+    });
+  } catch (e) { next(e); }
+});
 
 export default router;
