@@ -16,6 +16,9 @@ export const createApp = () => {
   // routes
   app.use('/api', require('./routes/forms').default);
   app.use('/api', require('./routes/responses').default);
+  app.use('/api', require('./routes/questions').default);
+  app.use('/api', require('./routes/choices').default);
+
 
   // error handler
   app.use((err: any, _req: any, res: any, _next: any) => {
