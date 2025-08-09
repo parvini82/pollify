@@ -12,5 +12,5 @@
   "include": [
     "src",
     "prisma/*.ts"
-  ]
+, "src/routes/index.tses/isrc/routes/app.tss", "src/routes/app.ts"  ]
 }
