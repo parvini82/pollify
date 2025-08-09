@@ -1,0 +1,37 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pollify-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: pollify
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build: ./server
+    container_name: pollify-server
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - server/.env
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+    command: sh -c "npx prisma migrate deploy && node dist/index.js"
+
+volumes:
+  db_data:
