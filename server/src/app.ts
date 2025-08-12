@@ -5,6 +5,7 @@ import formsRouter from './routes/forms';
 import questionsRouter from './routes/questions';
 import choicesRouter from './routes/choices';
 import responsesRouter from './routes/responses';
+import authRouter from './routes/auth';
 import morgan from 'morgan';
 
 export const createApp = () => {
@@ -18,11 +19,10 @@ export const createApp = () => {
   app.get('/health', (_req, res) => res.json({ ok: true }));
 
   // routes
-  app.use('/api', require('./routes/forms').default);
-  app.use('/api', require('./routes/responses').default);
+  app.use('/api/auth', authRouter);
   app.use('/api', formsRouter);
-  app.use('/api', questionsRouter);  // ← مهم
-  app.use('/api', choicesRouter);    // ← مهم
+  app.use('/api', questionsRouter);
+  app.use('/api', choicesRouter);
   app.use('/api', responsesRouter);
 
   // error handler

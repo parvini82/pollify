@@ -21,12 +21,22 @@ enum ConditionalOperator {
   LESS_THAN
 }
 
+enum UserRole {
+  ADMIN
+  USER
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
   name      String?
+  password  String   // Hashed password
+  role      UserRole @default(USER)
+  isActive  Boolean  @default(true)
   forms     Form[]
+  responses Response[]
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Form {
@@ -88,6 +98,7 @@ model Response {
   id            String        @id @default(cuid())
   form          Form          @relation(fields: [formId], references: [id], onDelete: Cascade)
   formId        String
+  submittedBy   User?         @relation(fields: [submittedById], references: [id], onDelete: SetNull)
   submittedById String?
   submittedAt   DateTime      @default(now())
   items         ResponseItem[]
@@ -97,6 +108,7 @@ model Response {
   totalTime     Int?          // Total time spent in seconds
   @@index([formId, submittedAt])
   @@index([clientIp, formId]) // For limiting responses per IP
+  @@index([submittedById, formId]) // For limiting responses per user
 }
 
 model ResponseItem {

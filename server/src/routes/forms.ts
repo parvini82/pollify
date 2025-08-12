@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { PrismaClient, QuestionType } from '@prisma/client';
 import { z } from 'zod';
+import { authenticateToken, requireUser, optionalAuth } from '../middleware/auth';
 
 const prisma = new PrismaClient();
 const router = Router();
@@ -11,7 +12,6 @@ const formSchema = z.object({
   isPublic: z.boolean().optional().default(true),
   maxResponses: z.number().optional(),
   allowMultipleResponses: z.boolean().optional().default(false),
-  createdById: z.string().optional(), // temporary until auth
 });
 
 const questionSchema = z.object({
@@ -32,38 +32,55 @@ const conditionalLogicSchema = z.object({
   showQuestion: z.boolean().optional().default(true),
 });
 
-// Create form
-router.post('/forms', async (req, res, next) => {
+// Create form (authenticated users only)
+router.post('/forms', authenticateToken, requireUser, async (req, res, next) => {
   try {
     const data = formSchema.parse(req.body);
-    // fallback demo user
-    const user = await prisma.user.upsert({
-      where: { email: 'demo@pollify.local' },
-      update: {},
-      create: { email: 'demo@pollify.local', name: 'Demo User' },
-    });
     const form = await prisma.form.create({
-      data: { ...data, createdById: user.id },
+      data: { ...data, createdById: req.user!.id },
     });
     res.json(form);
   } catch (e) { next(e); }
 });
 
-// Get all forms
-router.get('/forms', async (_req, res, next) => {
+// Get all forms (user sees their own + public forms)
+router.get('/forms', optionalAuth, async (req, res, next) => {
   try {
-    const forms = await prisma.form.findMany({ 
-      include: { 
-        _count: { select: { responses: true } },
-        createdBy: { select: { name: true, email: true } }
-      } 
-    });
+    let forms;
+    
+    if (req.user) {
+      // Authenticated user: get their forms + public forms
+      forms = await prisma.form.findMany({
+        where: {
+          OR: [
+            { createdById: req.user.id },
+            { isPublic: true }
+          ]
+        },
+        include: { 
+          _count: { select: { responses: true } },
+          createdBy: { select: { name: true, email: true } }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+    } else {
+      // Anonymous user: only public forms
+      forms = await prisma.form.findMany({
+        where: { isPublic: true },
+        include: { 
+          _count: { select: { responses: true } },
+          createdBy: { select: { name: true, email: true } }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+    }
+    
     res.json(forms);
   } catch (e) { next(e); }
 });
 
-// Get form by ID
-router.get('/forms/:formId', async (req, res, next) => {
+// Get form by ID (with access control)
+router.get('/forms/:formId', optionalAuth, async (req, res, next) => {
   try {
     const form = await prisma.form.findUnique({
       where: { id: req.params.formId },
@@ -75,18 +92,42 @@ router.get('/forms/:formId', async (req, res, next) => {
           }, 
           orderBy: { order: 'asc' } 
         },
-        _count: { select: { responses: true } }
+        _count: { select: { responses: true } },
+        createdBy: { select: { name: true, email: true } }
       },
     });
-    if (!form) return res.status(404).json({ error: 'Form not found' });
+    
+    if (!form) {
+      return res.status(404).json({ error: 'Form not found' });
+    }
+    
+    // Check access permissions
+    if (!form.isPublic && (!req.user || form.createdById !== req.user.id)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
     res.json(form);
   } catch (e) { next(e); }
 });
 
-// Update form
-router.patch('/forms/:formId', async (req, res, next) => {
+// Update form (owner only)
+router.patch('/forms/:formId', authenticateToken, requireUser, async (req, res, next) => {
   try {
     const data = formSchema.partial().parse(req.body);
+    
+    // Check if user owns the form
+    const existingForm = await prisma.form.findUnique({
+      where: { id: req.params.formId }
+    });
+    
+    if (!existingForm) {
+      return res.status(404).json({ error: 'Form not found' });
+    }
+    
+    if (existingForm.createdById !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
     const form = await prisma.form.update({
       where: { id: req.params.formId },
       data,
@@ -95,10 +136,48 @@ router.patch('/forms/:formId', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Add question to form
-router.post('/forms/:formId/questions', async (req, res, next) => {
+// Delete form (owner only)
+router.delete('/forms/:formId', authenticateToken, requireUser, async (req, res, next) => {
+  try {
+    // Check if user owns the form
+    const existingForm = await prisma.form.findUnique({
+      where: { id: req.params.formId }
+    });
+    
+    if (!existingForm) {
+      return res.status(404).json({ error: 'Form not found' });
+    }
+    
+    if (existingForm.createdById !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    await prisma.form.delete({
+      where: { id: req.params.formId }
+    });
+    
+    res.json({ message: 'Form deleted successfully' });
+  } catch (e) { next(e); }
+});
+
+// Add question to form (owner only)
+router.post('/forms/:formId/questions', authenticateToken, requireUser, async (req, res, next) => {
   try {
     const data = questionSchema.parse(req.body);
+    
+    // Check if user owns the form
+    const existingForm = await prisma.form.findUnique({
+      where: { id: req.params.formId }
+    });
+    
+    if (!existingForm) {
+      return res.status(404).json({ error: 'Form not found' });
+    }
+    
+    if (existingForm.createdById !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
     const question = await prisma.question.create({
       data: { ...data, formId: req.params.formId },
       include: { choices: true, conditionalLogic: true }
@@ -107,10 +186,25 @@ router.post('/forms/:formId/questions', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Add conditional logic to question
-router.post('/questions/:questionId/conditional-logic', async (req, res, next) => {
+// Add conditional logic to question (owner only)
+router.post('/questions/:questionId/conditional-logic', authenticateToken, requireUser, async (req, res, next) => {
   try {
     const data = conditionalLogicSchema.parse(req.body);
+    
+    // Check if user owns the question's form
+    const question = await prisma.question.findUnique({
+      where: { id: req.params.questionId },
+      include: { form: true }
+    });
+    
+    if (!question) {
+      return res.status(404).json({ error: 'Question not found' });
+    }
+    
+    if (question.form.createdById !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
     const conditionalLogic = await prisma.conditionalLogic.create({
       data: { ...data, questionId: req.params.questionId },
     });
@@ -118,21 +212,49 @@ router.post('/questions/:questionId/conditional-logic', async (req, res, next) =
   } catch (e) { next(e); }
 });
 
-// Update conditional logic
-router.patch('/conditional-logic/:logicId', async (req, res, next) => {
+// Update conditional logic (owner only)
+router.patch('/conditional-logic/:logicId', authenticateToken, requireUser, async (req, res, next) => {
   try {
     const data = conditionalLogicSchema.partial().parse(req.body);
-    const conditionalLogic = await prisma.conditionalLogic.update({
+    
+    // Check if user owns the conditional logic's question's form
+    const conditionalLogic = await prisma.conditionalLogic.findUnique({
+      where: { id: req.params.logicId },
+      include: { question: { include: { form: true } } }
+    });
+    
+    if (!conditionalLogic) {
+      return res.status(404).json({ error: 'Conditional logic not found' });
+    }
+    
+    if (conditionalLogic.question.form.createdById !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const updatedLogic = await prisma.conditionalLogic.update({
       where: { id: req.params.logicId },
       data,
     });
-    res.json(conditionalLogic);
+    res.json(updatedLogic);
   } catch (e) { next(e); }
 });
 
-// Get form responses
-router.get('/forms/:formId/responses', async (req, res, next) => {
+// Get form responses (owner only)
+router.get('/forms/:formId/responses', authenticateToken, requireUser, async (req, res, next) => {
   try {
+    // Check if user owns the form
+    const existingForm = await prisma.form.findUnique({
+      where: { id: req.params.formId }
+    });
+    
+    if (!existingForm) {
+      return res.status(404).json({ error: 'Form not found' });
+    }
+    
+    if (existingForm.createdById !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
     const responses = await prisma.response.findMany({
       where: { formId: req.params.formId },
       include: {
@@ -142,6 +264,9 @@ router.get('/forms/:formId/responses', async (req, res, next) => {
               include: { choices: true }
             }
           }
+        },
+        submittedBy: {
+          select: { name: true, email: true }
         }
       },
       orderBy: { submittedAt: 'desc' }
@@ -151,26 +276,39 @@ router.get('/forms/:formId/responses', async (req, res, next) => {
 });
 
 // Check if user has already responded
-router.get('/forms/:formId/responses/check', async (req, res, next) => {
+router.get('/forms/:formId/responses/check', optionalAuth, async (req, res, next) => {
   try {
     const { clientIp } = req.query;
     if (!clientIp) {
       return res.status(400).json({ error: 'Client IP required' });
     }
 
-    const existingResponse = await prisma.response.findFirst({
+    let existingResponse = null;
+
+    // Check by IP address
+    existingResponse = await prisma.response.findFirst({
       where: { 
         formId: req.params.formId,
         clientIp: clientIp as string
       }
     });
 
+    // If user is authenticated, also check by user ID
+    if (req.user && !existingResponse) {
+      existingResponse = await prisma.response.findFirst({
+        where: { 
+          formId: req.params.formId,
+          submittedById: req.user.id
+        }
+      });
+    }
+
     res.json({ exists: !!existingResponse });
   } catch (e) { next(e); }
 });
 
-// Submit response
-router.post('/forms/:formId/responses', async (req, res, next) => {
+// Submit response (with user authentication if available)
+router.post('/forms/:formId/responses', optionalAuth, async (req, res, next) => {
   try {
     const { clientIp, totalTime, items } = req.body;
     
@@ -184,7 +322,7 @@ router.post('/forms/:formId/responses', async (req, res, next) => {
       return res.status(404).json({ error: 'Form not found' });
     }
     
-    if (!form.isPublic) {
+    if (!form.isPublic && (!req.user || form.createdById !== req.user.id)) {
       return res.status(403).json({ error: 'Form is not public' });
     }
     
@@ -193,14 +331,29 @@ router.post('/forms/:formId/responses', async (req, res, next) => {
       return res.status(429).json({ error: 'Form has reached maximum responses' });
     }
     
-    // Check if user has already responded (if not allowing multiple responses)
-    if (!form.allowMultipleResponses && clientIp) {
-      const existingResponse = await prisma.response.findFirst({
-        where: { 
-          formId: req.params.formId,
-          clientIp
-        }
-      });
+    // Check if user has already responded
+    if (!form.allowMultipleResponses) {
+      let existingResponse = null;
+      
+      // Check by IP address
+      if (clientIp) {
+        existingResponse = await prisma.response.findFirst({
+          where: { 
+            formId: req.params.formId,
+            clientIp
+          }
+        });
+      }
+      
+      // If user is authenticated, also check by user ID
+      if (req.user && !existingResponse) {
+        existingResponse = await prisma.response.findFirst({
+          where: { 
+            formId: req.params.formId,
+            submittedById: req.user.id
+          }
+        });
+      }
       
       if (existingResponse) {
         return res.status(409).json({ error: 'You have already submitted a response' });
@@ -210,6 +363,7 @@ router.post('/forms/:formId/responses', async (req, res, next) => {
     const response = await prisma.response.create({
       data: {
         formId: req.params.formId,
+        submittedById: req.user?.id,
         clientIp,
         totalTime,
         items: {
@@ -236,9 +390,22 @@ router.post('/forms/:formId/responses', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Get behavioral analysis
-router.get('/forms/:formId/behavioral-analysis', async (req, res, next) => {
+// Get behavioral analysis (owner only)
+router.get('/forms/:formId/behavioral-analysis', authenticateToken, requireUser, async (req, res, next) => {
   try {
+    // Check if user owns the form
+    const existingForm = await prisma.form.findUnique({
+      where: { id: req.params.formId }
+    });
+    
+    if (!existingForm) {
+      return res.status(404).json({ error: 'Form not found' });
+    }
+    
+    if (existingForm.createdById !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
     const responses = await prisma.response.findMany({
       where: { formId: req.params.formId },
       include: {

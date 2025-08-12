@@ -1,42 +1,55 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, UserRole } from '@prisma/client';
+import bcrypt from 'bcryptjs';
+
 const prisma = new PrismaClient();
 
 async function main() {
-  // create a sample user + form + questions
+  // Create admin user
+  const adminPassword = await bcrypt.hash('admin123', 12);
+  
+  const admin = await prisma.user.upsert({
+    where: { email: 'admin@pollify.local' },
+    update: {
+      password: adminPassword,
+      role: UserRole.ADMIN,
+      isActive: true
+    },
+    create: {
+      email: 'admin@pollify.local',
+      name: 'Admin User',
+      password: adminPassword,
+      role: UserRole.ADMIN,
+      isActive: true
+    },
+  });
+
+  // Create demo user
+  const userPassword = await bcrypt.hash('user123', 12);
+  
   const user = await prisma.user.upsert({
-    where: { email: 'demo@pollify.local' },
-    update: {},
-    create: { email: 'demo@pollify.local', name: 'Demo User' },
+    where: { email: 'user@pollify.local' },
+    update: {
+      password: userPassword,
+      role: UserRole.USER,
+      isActive: true
+    },
+    create: {
+      email: 'user@pollify.local',
+      name: 'Demo User',
+      password: userPassword,
+      role: UserRole.USER,
+      isActive: true
+    },
   });
 
-  const form = await prisma.form.create({
-    data: {
-      title: 'Customer Satisfaction Survey',
-      description: 'Quick CSAT survey',
-      createdById: user.id,
-      questions: {
-        create: [
-          { title: 'How satisfied are you?', type: 'MULTIPLE_CHOICE', order: 1,
-            choices: { create: [
-              { label: 'Very satisfied', value: '5', order: 1 },
-              { label: 'Satisfied', value: '4', order: 2 },
-              { label: 'Neutral', value: '3', order: 3 },
-              { label: 'Dissatisfied', value: '2', order: 4 },
-              { label: 'Very dissatisfied', value: '1', order: 5 }
-            ] }
-          },
-          { title: 'Any comments?', type: 'TEXT', order: 2 }
-        ]
-      }
-    }
-  });
-
-  console.log('Seeded:', { user: user.email, form: form.title });
+  console.log('Created users:', { admin: admin.email, user: user.email });
 }
 
-main().catch(e => {
-  console.error(e);
-  process.exit(1);
-}).finally(async () => {
-  await prisma.$disconnect();
-});
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

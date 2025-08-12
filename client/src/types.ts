@@ -1,6 +1,7 @@
 export type Id = string
 export type QuestionType = 'TEXT' | 'MULTIPLE_CHOICE' | 'RATING'
 export type ConditionalOperator = 'EQUALS' | 'NOT_EQUALS' | 'CONTAINS' | 'GREATER_THAN' | 'LESS_THAN'
+export type UserRole = 'ADMIN' | 'USER'
 
 export interface Choice { 
   id: Id; 
@@ -41,6 +42,10 @@ export interface Form {
   questions: Question[]; 
   _count?: { responses: number };
   createdAt?: string;
+  createdBy?: {
+    name: string;
+    email: string;
+  };
 }
 
 export interface ResponseItem {
@@ -59,6 +64,10 @@ export interface Response {
   submittedAt: string;
   totalTime?: number;
   items: ResponseItem[];
+  submittedBy?: {
+    name: string;
+    email: string;
+  };
 }
 
 export interface ChartData {
@@ -77,4 +86,32 @@ export interface BehavioralAnalysis {
   questionChangeRates: { [questionId: string]: number };
   timeDistribution: { [questionId: string]: { min: number; max: number; avg: number } };
   completionRates: { [questionId: string]: number };
+}
+
+export interface User {
+  id: Id;
+  email: string;
+  name?: string;
+  role: UserRole;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AuthResponse {
+  message: string;
+  token: string;
+  user: User;
+}
+
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface RegisterData {
+  email: string;
+  password: string;
+  name: string;
+  role?: UserRole;
 }
