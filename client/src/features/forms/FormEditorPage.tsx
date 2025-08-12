@@ -36,6 +36,9 @@ export default function FormEditorPage() {
   const [qMaxRating, setQMaxRating] = useState(5)
   const [qRatingLabels, setQRatingLabels] = useState('')
   
+  // Multiple choice options
+  const [qChoices, setQChoices] = useState<string[]>([''])
+  
   // Conditional logic dialog
   const [conditionalDialogOpen, setConditionalDialogOpen] = useState(false)
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null)
@@ -50,9 +53,27 @@ export default function FormEditorPage() {
   }
   
   useEffect(()=>{ if(id) refresh() }, [id])
+  
+  // Initialize choices when question type changes
+  useEffect(() => {
+    if (qType === 'MULTIPLE_CHOICE') {
+      setQChoices(['', '']) // Start with 2 empty options
+    } else {
+      setQChoices([''])
+    }
+  }, [qType])
 
   const addQuestion = async () => {
     if (!id || !qTitle.trim()) return
+    
+    // Validate multiple choice questions have choices
+    if (qType === 'MULTIPLE_CHOICE') {
+      const validChoices = qChoices.filter(choice => choice.trim() !== '')
+      if (validChoices.length < 2) {
+        alert('Multiple choice questions must have at least 2 choices')
+        return
+      }
+    }
     
     const questionData: any = { 
       title: qTitle, 
@@ -68,7 +89,23 @@ export default function FormEditorPage() {
     }
     
     try { 
-      await http.post(`/api/forms/${id}/questions`, questionData)
+      const response = await http.post(`/api/forms/${id}/questions`, questionData)
+      const questionId = response.data.id
+      
+      // If it's a multiple choice question, create the choices
+      if (qType === 'MULTIPLE_CHOICE') {
+        const validChoices = qChoices.filter(choice => choice.trim() !== '')
+        for (let i = 0; i < validChoices.length; i++) {
+          const choice = validChoices[i]
+          await http.post(`/api/questions/${questionId}/choices`, {
+            label: choice,
+            value: choice.toLowerCase().replace(/\s+/g, '_'),
+            order: i + 1
+          })
+        }
+      }
+      
+      // Reset form
       setQTitle('')
       setQType('TEXT')
       setQOrder(0)
@@ -76,6 +113,7 @@ export default function FormEditorPage() {
       setQMinRating(1)
       setQMaxRating(5)
       setQRatingLabels('')
+      setQChoices([''])
       refresh() 
     }
     catch (e) { alert(errMsg(e)) }
@@ -94,6 +132,23 @@ export default function FormEditorPage() {
     const order = Number(prompt('Choice order?', '0') || 0)
     await http.post(`/api/questions/${qid}/choices`, { label, value, order })
     refresh()
+  }
+  
+  const addNewChoiceOption = () => {
+    setQChoices([...qChoices, ''])
+  }
+  
+  const removeChoiceOption = (index: number) => {
+    if (qChoices.length > 1) {
+      const newChoices = qChoices.filter((_, i) => i !== index)
+      setQChoices(newChoices)
+    }
+  }
+  
+  const updateChoiceOption = (index: number, value: string) => {
+    const newChoices = [...qChoices]
+    newChoices[index] = value
+    setQChoices(newChoices)
   }
   
   const delChoice = async (cid: string) => { 
@@ -189,7 +244,16 @@ export default function FormEditorPage() {
                 select 
                 label="Type" 
                 value={qType} 
-                onChange={e=>setQType(e.target.value as any)} 
+                onChange={(e) => {
+                  const newType = e.target.value as any
+                  setQType(newType)
+                  // Reset choices when switching to multiple choice
+                  if (newType === 'MULTIPLE_CHOICE') {
+                    setQChoices(['', '']) // Start with 2 empty options
+                  } else {
+                    setQChoices([''])
+                  }
+                }} 
                 fullWidth
               >
                 <MenuItem value="TEXT">Text</MenuItem>
@@ -248,6 +312,42 @@ export default function FormEditorPage() {
                   />
                 </Grid>
               </>
+            )}
+            
+            {qType === 'MULTIPLE_CHOICE' && (
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" gutterBottom>Multiple Choice Options</Typography>
+                <Stack spacing={1}>
+                  {qChoices.map((choice, index) => (
+                    <Stack key={index} direction="row" spacing={1} alignItems="center">
+                      <TextField
+                        label={`Option ${index + 1}`}
+                        value={choice}
+                        onChange={(e) => updateChoiceOption(index, e.target.value)}
+                        fullWidth
+                        size="small"
+                      />
+                      {qChoices.length > 1 && (
+                        <IconButton
+                          onClick={() => removeChoiceOption(index)}
+                          color="error"
+                          size="small"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      )}
+                    </Stack>
+                  ))}
+                  <Button
+                    onClick={addNewChoiceOption}
+                    startIcon={<AddIcon />}
+                    size="small"
+                    variant="outlined"
+                  >
+                    Add Option
+                  </Button>
+                </Stack>
+              </Grid>
             )}
           </Grid>
           <Stack sx={{ mt: 2 }}>
