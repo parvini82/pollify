@@ -10,6 +10,15 @@ datasource db {
 enum QuestionType {
   TEXT
   MULTIPLE_CHOICE
+  RATING
+}
+
+enum ConditionalOperator {
+  EQUALS
+  NOT_EQUALS
+  CONTAINS
+  GREATER_THAN
+  LESS_THAN
 }
 
 model User {
@@ -21,31 +30,48 @@ model User {
 }
 
 model Form {
-  id          String     @id @default(cuid())
-  title       String
-  description String?
-  isPublic    Boolean    @default(true)
-  createdBy   User       @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  createdById String
-  questions   Question[] @relation("FormQuestions")
-  responses   Response[]
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id                    String     @id @default(cuid())
+  title                 String
+  description           String?
+  isPublic              Boolean    @default(true)
+  maxResponses          Int?       // Limit total responses
+  allowMultipleResponses Boolean   @default(false) // Allow same participant multiple responses
+  createdBy             User       @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdById           String
+  questions             Question[] @relation("FormQuestions")
+  responses             Response[]
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
   @@index([createdById])
 }
 
 model Question {
-  id            String       @id @default(cuid())
-  form          Form         @relation("FormQuestions", fields: [formId], references: [id], onDelete: Cascade)
-  formId        String
-  title         String
-  type          QuestionType
-  required      Boolean      @default(false)
-  order         Int
-  choices       Choice[]
-  responseItems ResponseItem[]
-  createdAt     DateTime     @default(now())
+  id                    String       @id @default(cuid())
+  form                  Form         @relation("FormQuestions", fields: [formId], references: [id], onDelete: Cascade)
+  formId                String
+  title                 String
+  type                  QuestionType
+  required              Boolean      @default(false)
+  order                 Int
+  minRating             Int?         // For rating questions
+  maxRating             Int?         // For rating questions
+  ratingLabels          String?      // JSON array of labels for rating scale
+  conditionalLogic      ConditionalLogic?
+  choices               Choice[]
+  responseItems         ResponseItem[]
+  createdAt             DateTime     @default(now())
   @@index([formId, order])
+}
+
+model ConditionalLogic {
+  id                    String   @id @default(cuid())
+  question              Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  questionId            String   @unique
+  dependsOnQuestionId   String   // Question this depends on
+  operator              ConditionalOperator
+  value                 String   // Value to compare against
+  skipToQuestionId      String?  // Question to skip to if condition is met
+  showQuestion          Boolean  @default(true) // Whether to show or hide question
 }
 
 model Choice {
@@ -63,11 +89,14 @@ model Response {
   form          Form          @relation(fields: [formId], references: [id], onDelete: Cascade)
   formId        String
   submittedById String?
-  submittedAt   DateTime @default(now())
+  submittedAt   DateTime      @default(now())
   items         ResponseItem[]
   clientIp      String?
   userAgent     String?
+  sessionId     String?       // For tracking session
+  totalTime     Int?          // Total time spent in seconds
   @@index([formId, submittedAt])
+  @@index([clientIp, formId]) // For limiting responses per IP
 }
 
 model ResponseItem {
@@ -78,6 +107,9 @@ model ResponseItem {
   questionId    String
   valueText     String?
   valueChoiceId String?
+  valueRating   Int?     // For rating questions
+  timeSpent     Int?     // Time spent on this question in seconds
+  changedAnswers Int     @default(0) // Number of times answer was changed
   @@index([responseId])
   @@index([questionId])
 }

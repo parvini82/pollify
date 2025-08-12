@@ -11,8 +11,9 @@ export default function App() {
       <Routes>
         <Route path="/" element={<FormsPage />} />
         <Route path="/forms/:id" element={<FormEditorPage />} />
-        <Route path="/public" element={<PublicFillPage />} />
-        <Route path="/results" element={<ResultsPage />} />
+        <Route path="/forms/:formId/fill" element={<PublicFillPage />} />
+        <Route path="/forms/:formId/results" element={<ResultsPage />} />
+        <Route path="/public/:formId" element={<PublicFillPage />} />
       </Routes>
     </Layout>
   )

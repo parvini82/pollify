@@ -1,6 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import formsRouter from './routes/forms';
+import questionsRouter from './routes/questions';
+import choicesRouter from './routes/choices';
+import responsesRouter from './routes/responses';
 import morgan from 'morgan';
 
 export const createApp = () => {
@@ -16,6 +20,10 @@ export const createApp = () => {
   // routes
   app.use('/api', require('./routes/forms').default);
   app.use('/api', require('./routes/responses').default);
+  app.use('/api', formsRouter);
+  app.use('/api', questionsRouter);  // ← مهم
+  app.use('/api', choicesRouter);    // ← مهم
+  app.use('/api', responsesRouter);
 
   // error handler
   app.use((err: any, _req: any, res: any, _next: any) => {
