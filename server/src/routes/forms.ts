@@ -92,6 +92,9 @@ router.get('/forms/:formId', optionalAuth, async (req, res, next) => {
           }, 
           orderBy: { order: 'asc' } 
         },
+        logicRules: {
+          orderBy: { order: 'asc' }
+        },
         _count: { select: { responses: true } },
         createdBy: { select: { name: true, email: true } }
       },
@@ -505,6 +508,96 @@ router.get('/forms/:formId/behavioral-analysis', authenticateToken, requireUser,
       timeDistribution,
       completionRates
     });
+  } catch (e) { next(e); }
+});
+
+// Logic Rules endpoints
+const logicRuleSchema = z.object({
+  type: z.enum(['VISIBILITY', 'NAVIGATION']),
+  dependsOnQuestionId: z.string(),
+  operator: z.enum(['EQUALS', 'NOT_EQUALS', 'CONTAINS', 'GREATER_THAN', 'LESS_THAN']),
+  value: z.string(),
+  order: z.number().int().nonnegative().default(0),
+  
+  // For visibility rules
+  subjectQuestionId: z.string().optional(),
+  showQuestion: z.boolean().optional(),
+  
+  // For navigation rules
+  fromQuestionId: z.string().optional(),
+  action: z.enum(['GO_TO', 'SKIP_TO', 'END_SURVEY']).optional(),
+  targetQuestionId: z.string().optional(),
+});
+
+// Create logic rule
+router.post('/forms/:formId/logic-rules', authenticateToken, requireUser, async (req, res, next) => {
+  try {
+    const { formId } = req.params;
+    
+    // Check if user owns the form
+    const form = await prisma.form.findUnique({
+      where: { id: formId },
+      select: { createdById: true }
+    });
+    
+    if (!form || form.createdById !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const data = logicRuleSchema.parse(req.body);
+    const logicRule = await prisma.logicRule.create({
+      data: { ...data, formId }
+    });
+    
+    res.json(logicRule);
+  } catch (e) { next(e); }
+});
+
+// Update logic rule
+router.patch('/forms/:formId/logic-rules/:ruleId', authenticateToken, requireUser, async (req, res, next) => {
+  try {
+    const { formId, ruleId } = req.params;
+    
+    // Check if user owns the form
+    const form = await prisma.form.findUnique({
+      where: { id: formId },
+      select: { createdById: true }
+    });
+    
+    if (!form || form.createdById !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const data = logicRuleSchema.partial().parse(req.body);
+    const logicRule = await prisma.logicRule.update({
+      where: { id: ruleId, formId },
+      data
+    });
+    
+    res.json(logicRule);
+  } catch (e) { next(e); }
+});
+
+// Delete logic rule
+router.delete('/forms/:formId/logic-rules/:ruleId', authenticateToken, requireUser, async (req, res, next) => {
+  try {
+    const { formId, ruleId } = req.params;
+    
+    // Check if user owns the form
+    const form = await prisma.form.findUnique({
+      where: { id: formId },
+      select: { createdById: true }
+    });
+    
+    if (!form || form.createdById !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    await prisma.logicRule.delete({
+      where: { id: ruleId, formId }
+    });
+    
+    res.status(204).send();
   } catch (e) { next(e); }
 });
 

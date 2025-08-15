@@ -122,34 +122,48 @@ export default function PublicFillPage() {
   const getVisibleQuestions = (): Question[] => {
     if (!form?.questions) return []
     
-    return form.questions.filter((question, index) => {
-      if (!question.conditionalLogic) return true
+    // Apply visibility rules from centralized logic
+    const visibilityRules = form.logicRules?.filter(rule => rule.type === 'VISIBILITY') || []
+    
+    return form.questions.filter((question) => {
+      // Check if there are any visibility rules for this question
+      const questionVisibilityRules = visibilityRules.filter(rule => rule.subjectQuestionId === question.id)
       
-      const logic = question.conditionalLogic
-      const dependsOnAnswer = answers[logic.dependsOnQuestionId]
+      if (questionVisibilityRules.length === 0) return true // No rules, show by default
       
-      if (!dependsOnAnswer) return logic.showQuestion
-      
-      let conditionMet = false
-      switch (logic.operator) {
-        case 'EQUALS':
-          conditionMet = dependsOnAnswer === logic.value
-          break
-        case 'NOT_EQUALS':
-          conditionMet = dependsOnAnswer !== logic.value
-          break
-        case 'CONTAINS':
-          conditionMet = String(dependsOnAnswer).includes(logic.value)
-          break
-        case 'GREATER_THAN':
-          conditionMet = Number(dependsOnAnswer) > Number(logic.value)
-          break
-        case 'LESS_THAN':
-          conditionMet = Number(dependsOnAnswer) < Number(logic.value)
-          break
+      // Check all visibility rules for this question in order
+      for (const rule of questionVisibilityRules.sort((a, b) => a.order - b.order)) {
+        const dependsOnAnswer = answers[rule.dependsOnQuestionId]
+        
+        if (!dependsOnAnswer) continue
+        
+        let conditionMet = false
+        switch (rule.operator) {
+          case 'EQUALS':
+            conditionMet = dependsOnAnswer === rule.value
+            break
+          case 'NOT_EQUALS':
+            conditionMet = dependsOnAnswer !== rule.value
+            break
+          case 'CONTAINS':
+            conditionMet = String(dependsOnAnswer).includes(rule.value)
+            break
+          case 'GREATER_THAN':
+            conditionMet = Number(dependsOnAnswer) > Number(rule.value)
+            break
+          case 'LESS_THAN':
+            conditionMet = Number(dependsOnAnswer) < Number(rule.value)
+            break
+        }
+        
+        // If condition is met, apply the visibility rule
+        if (conditionMet) {
+          return rule.showQuestion ?? true
+        }
       }
       
-      return logic.showQuestion ? conditionMet : !conditionMet
+      // No conditions met, show by default
+      return true
     })
   }
 
@@ -169,10 +183,70 @@ export default function PublicFillPage() {
     })
   }
 
-  const nextQuestion = () => {
+  const getNextQuestionIndex = (currentIndex: number): number | null => {
     const visibleQuestions = getVisibleQuestions()
-    if (currentQuestionIndex < visibleQuestions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1)
+    const currentQuestion = visibleQuestions[currentIndex]
+    
+    if (!currentQuestion) return null
+    
+    // Check navigation rules from centralized logic
+    const navigationRules = form?.logicRules?.filter(rule => rule.type === 'NAVIGATION') || []
+    
+    // Find rules that apply to the current question
+    const applicableRules = navigationRules.filter(rule => rule.fromQuestionId === currentQuestion.id)
+    
+    // Check rules in order
+    for (const rule of applicableRules.sort((a, b) => a.order - b.order)) {
+      const dependsOnAnswer = answers[rule.dependsOnQuestionId]
+      
+      if (!dependsOnAnswer) continue
+      
+      let conditionMet = false
+      switch (rule.operator) {
+        case 'EQUALS':
+          conditionMet = dependsOnAnswer === rule.value
+          break
+        case 'NOT_EQUALS':
+          conditionMet = dependsOnAnswer !== rule.value
+          break
+        case 'CONTAINS':
+          conditionMet = String(dependsOnAnswer).includes(rule.value)
+          break
+        case 'GREATER_THAN':
+          conditionMet = Number(dependsOnAnswer) > Number(rule.value)
+          break
+        case 'LESS_THAN':
+          conditionMet = Number(dependsOnAnswer) < Number(rule.value)
+          break
+      }
+      
+      if (conditionMet) {
+        switch (rule.action) {
+          case 'GO_TO':
+          case 'SKIP_TO':
+            if (rule.targetQuestionId) {
+              // Find the target question in visible questions
+              const targetIndex = visibleQuestions.findIndex(q => q.id === rule.targetQuestionId)
+              return targetIndex >= 0 ? targetIndex : null
+            }
+            break
+          case 'END_SURVEY':
+            return null // End survey
+        }
+      }
+    }
+    
+    // No navigation rules apply, go to next question
+    return currentIndex < visibleQuestions.length - 1 ? currentIndex + 1 : null
+  }
+
+  const nextQuestion = () => {
+    const nextIndex = getNextQuestionIndex(currentQuestionIndex)
+    if (nextIndex !== null) {
+      setCurrentQuestionIndex(nextIndex)
+    } else {
+      // End of survey or END_SURVEY action triggered
+      submitForm()
     }
   }
 

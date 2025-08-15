@@ -23,7 +23,8 @@ import {
   Divider,
   Alert
 } from '@mui/material'
-import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Settings as SettingsIcon } from '@mui/icons-material'
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Settings as SettingsIcon, Tune as TuneIcon } from '@mui/icons-material'
+import LogicManager from './LogicManager'
 
 export default function FormEditorPage() {
   const { id } = useParams()
@@ -39,7 +40,10 @@ export default function FormEditorPage() {
   // Multiple choice options
   const [qChoices, setQChoices] = useState<string[]>([''])
   
-  // Conditional logic dialog
+  // Logic Manager
+  const [logicManagerOpen, setLogicManagerOpen] = useState(false)
+  
+  // Conditional logic dialog (legacy)
   const [conditionalDialogOpen, setConditionalDialogOpen] = useState(false)
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null)
   const [conditionalLogic, setConditionalLogic] = useState<Partial<ConditionalLogic>>({})
@@ -191,6 +195,13 @@ export default function FormEditorPage() {
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography variant="h4">{form.title}</Typography>
         <Stack direction="row" spacing={1}>
+          <Button 
+            onClick={() => setLogicManagerOpen(true)}
+            startIcon={<TuneIcon />}
+            variant="outlined"
+          >
+            Logic
+          </Button>
           <Button component={RouterLink} to={`/forms/${id}/fill`} variant="outlined">Preview Form</Button>
           <Button component={RouterLink} to={`/forms/${id}/results`} variant="contained">View Results</Button>
         </Stack>
@@ -508,6 +519,14 @@ export default function FormEditorPage() {
           <Button onClick={saveConditionalLogic} variant="contained">Save</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Logic Manager */}
+      <LogicManager
+        open={logicManagerOpen}
+        onClose={() => setLogicManagerOpen(false)}
+        form={form}
+        onFormUpdate={refresh}
+      />
     </Stack>
   )
 }

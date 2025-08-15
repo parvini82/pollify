@@ -1,6 +1,7 @@
 export type Id = string
 export type QuestionType = 'TEXT' | 'MULTIPLE_CHOICE' | 'RATING'
 export type ConditionalOperator = 'EQUALS' | 'NOT_EQUALS' | 'CONTAINS' | 'GREATER_THAN' | 'LESS_THAN'
+export type ConditionalAction = 'GO_TO' | 'SKIP_TO' | 'END_SURVEY'
 export type UserRole = 'ADMIN' | 'USER'
 
 export interface Choice { 
@@ -10,13 +11,42 @@ export interface Choice {
   order: number 
 }
 
+// Base interface for all logic rules
+export interface BaseLogicRule {
+  id: Id;
+  dependsOnQuestionId: string;
+  operator: ConditionalOperator;
+  value: string;
+  order: number;
+}
+
+// Rule for showing/hiding questions
+export interface VisibilityRule extends BaseLogicRule {
+  type: 'VISIBILITY';
+  subjectQuestionId: string; // The question to show/hide
+  showQuestion: boolean; // true = show when condition met, false = hide when condition met
+}
+
+// Rule for navigation (skip logic)
+export interface NavigationRule extends BaseLogicRule {
+  type: 'NAVIGATION';
+  fromQuestionId: string; // The question that triggers the navigation
+  action: ConditionalAction;
+  targetQuestionId?: string; // Required for GO_TO/SKIP_TO actions
+}
+
+export type LogicRule = VisibilityRule | NavigationRule;
+
+// Legacy interface for backward compatibility
 export interface ConditionalLogic {
   id: Id;
   dependsOnQuestionId: string;
   operator: ConditionalOperator;
   value: string;
-  skipToQuestionId?: string;
+  action: ConditionalAction;
+  targetQuestionId?: string;
   showQuestion: boolean;
+  order: number;
 }
 
 export interface Question { 
@@ -28,7 +58,7 @@ export interface Question {
   minRating?: number;
   maxRating?: number;
   ratingLabels?: string;
-  conditionalLogic?: ConditionalLogic;
+  conditionalLogic: ConditionalLogic[]; // Keep for backward compatibility
   choices: Choice[] 
 }
 
@@ -39,7 +69,8 @@ export interface Form {
   isPublic: boolean; 
   maxResponses?: number;
   allowMultipleResponses: boolean;
-  questions: Question[]; 
+  questions: Question[];
+  logicRules?: LogicRule[]; // New centralized logic rules
   _count?: { responses: number };
   createdAt?: string;
   createdBy?: {

@@ -7,6 +7,140 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  name      String?
+  createdAt DateTime   @default(now())
+  isActive  Boolean    @default(true)
+  password  String
+  role      UserRole   @default(USER)
+  updatedAt DateTime   @updatedAt
+  forms     Form[]
+  responses Response[]
+}
+
+model Form {
+  id                     String     @id @default(cuid())
+  title                  String
+  description            String?
+  isPublic               Boolean    @default(true)
+  createdById            String
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+  allowMultipleResponses Boolean    @default(false)
+  maxResponses           Int?
+  createdBy              User       @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  questions              Question[] @relation("FormQuestions")
+  logicRules             LogicRule[]
+  responses              Response[]
+
+  @@index([createdById])
+}
+
+model Question {
+  id               String             @id @default(cuid())
+  formId           String
+  title            String
+  type             QuestionType
+  required         Boolean            @default(false)
+  order            Int
+  createdAt        DateTime           @default(now())
+  maxRating        Int?
+  minRating        Int?
+  ratingLabels     String?
+  choices          Choice[]
+  conditionalLogic ConditionalLogic[]
+  form             Form               @relation("FormQuestions", fields: [formId], references: [id], onDelete: Cascade)
+  responseItems    ResponseItem[]
+
+  @@index([formId, order])
+}
+
+model ConditionalLogic {
+  id                  String              @id @default(cuid())
+  questionId          String
+  dependsOnQuestionId String
+  operator            ConditionalOperator
+  value               String
+  showQuestion        Boolean             @default(true)
+  action              ConditionalAction   @default(GO_TO)
+  order               Int                 @default(0)
+  targetQuestionId    String?
+  question            Question            @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId, order])
+}
+
+// New centralized logic rules
+model LogicRule {
+  id                    String   @id @default(cuid())
+  form                  Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId                String
+  type                  String   // 'VISIBILITY' or 'NAVIGATION'
+  dependsOnQuestionId   String   // Question this depends on
+  operator              ConditionalOperator
+  value                 String   // Value to compare against
+  order                 Int      @default(0) // Order of evaluation
+  
+  // For visibility rules
+  subjectQuestionId     String?  // Question to show/hide
+  showQuestion          Boolean? // true = show when condition met, false = hide when condition met
+  
+  // For navigation rules
+  fromQuestionId        String?  // Question that triggers navigation
+  action                ConditionalAction? // GO_TO, SKIP_TO, END_SURVEY
+  targetQuestionId      String?  // Question to go to (for GO_TO/SKIP_TO)
+  
+  createdAt             DateTime @default(now())
+  @@index([formId, order])
+}
+
+model Choice {
+  id         String   @id @default(cuid())
+  questionId String
+  label      String
+  value      String
+  order      Int
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId, order])
+}
+
+model Response {
+  id            String         @id @default(cuid())
+  formId        String
+  submittedById String?
+  submittedAt   DateTime       @default(now())
+  clientIp      String?
+  userAgent     String?
+  sessionId     String?
+  totalTime     Int?
+  form          Form           @relation(fields: [formId], references: [id], onDelete: Cascade)
+  submittedBy   User?          @relation(fields: [submittedById], references: [id])
+  items         ResponseItem[]
+
+  @@index([formId, submittedAt])
+  @@index([clientIp, formId])
+  @@index([submittedById, formId])
+}
+
+model ResponseItem {
+  id             String   @id @default(cuid())
+  responseId     String
+  questionId     String
+  valueText      String?
+  valueChoiceId  String?
+  changedAnswers Int      @default(0)
+  timeSpent      Int?
+  valueRating    Int?
+  question       Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  response       Response @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  @@index([responseId])
+  @@index([questionId])
+}
+
 enum QuestionType {
   TEXT
   MULTIPLE_CHOICE
@@ -21,107 +155,13 @@ enum ConditionalOperator {
   LESS_THAN
 }
 
+enum ConditionalAction {
+  GO_TO
+  SKIP_TO
+  END_SURVEY
+}
+
 enum UserRole {
   ADMIN
   USER
-}
-
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  password  String   // Hashed password
-  role      UserRole @default(USER)
-  isActive  Boolean  @default(true)
-  forms     Form[]
-  responses Response[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Form {
-  id                    String     @id @default(cuid())
-  title                 String
-  description           String?
-  isPublic              Boolean    @default(true)
-  maxResponses          Int?       // Limit total responses
-  allowMultipleResponses Boolean   @default(false) // Allow same participant multiple responses
-  createdBy             User       @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  createdById           String
-  questions             Question[] @relation("FormQuestions")
-  responses             Response[]
-  createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
-  @@index([createdById])
-}
-
-model Question {
-  id                    String       @id @default(cuid())
-  form                  Form         @relation("FormQuestions", fields: [formId], references: [id], onDelete: Cascade)
-  formId                String
-  title                 String
-  type                  QuestionType
-  required              Boolean      @default(false)
-  order                 Int
-  minRating             Int?         // For rating questions
-  maxRating             Int?         // For rating questions
-  ratingLabels          String?      // JSON array of labels for rating scale
-  conditionalLogic      ConditionalLogic?
-  choices               Choice[]
-  responseItems         ResponseItem[]
-  createdAt             DateTime     @default(now())
-  @@index([formId, order])
-}
-
-model ConditionalLogic {
-  id                    String   @id @default(cuid())
-  question              Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  questionId            String   @unique
-  dependsOnQuestionId   String   // Question this depends on
-  operator              ConditionalOperator
-  value                 String   // Value to compare against
-  skipToQuestionId      String?  // Question to skip to if condition is met
-  showQuestion          Boolean  @default(true) // Whether to show or hide question
-}
-
-model Choice {
-  id         String   @id @default(cuid())
-  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  questionId String
-  label      String
-  value      String
-  order      Int
-  @@index([questionId, order])
-}
-
-model Response {
-  id            String        @id @default(cuid())
-  form          Form          @relation(fields: [formId], references: [id], onDelete: Cascade)
-  formId        String
-  submittedBy   User?         @relation(fields: [submittedById], references: [id], onDelete: SetNull)
-  submittedById String?
-  submittedAt   DateTime      @default(now())
-  items         ResponseItem[]
-  clientIp      String?
-  userAgent     String?
-  sessionId     String?       // For tracking session
-  totalTime     Int?          // Total time spent in seconds
-  @@index([formId, submittedAt])
-  @@index([clientIp, formId]) // For limiting responses per IP
-  @@index([submittedById, formId]) // For limiting responses per user
-}
-
-model ResponseItem {
-  id            String   @id @default(cuid())
-  response      Response @relation(fields: [responseId], references: [id], onDelete: Cascade)
-  responseId    String
-  question      Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  questionId    String
-  valueText     String?
-  valueChoiceId String?
-  valueRating   Int?     // For rating questions
-  timeSpent     Int?     // Time spent on this question in seconds
-  changedAnswers Int     @default(0) // Number of times answer was changed
-  @@index([responseId])
-  @@index([questionId])
 }
