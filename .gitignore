@@ -27,3 +27,4 @@ server/prisma/dev.db-journal
 
 # Docker
 db_data/
+server/fix-empty-choices.js

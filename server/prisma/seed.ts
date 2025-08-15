@@ -3,6 +3,13 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+// Fallback choices for MULTIPLE_CHOICE when template does not provide any
+const fallbackChoiceSets: string[][] = [
+  ['Yes', 'No', 'Maybe'],
+  ['Option 1', 'Option 2', 'Option 3'],
+  ['Strongly agree', 'Agree', 'Neutral', 'Disagree', 'Strongly disagree']
+];
+
 // Sample data arrays
 const sampleNames = [
   'John Smith', 'Sarah Johnson', 'Michael Brown', 'Emily Davis', 'David Wilson',
@@ -176,13 +183,18 @@ async function main() {
           }
         });
 
-        // Create choices for multiple choice questions
-        if (questionData.type === 'MULTIPLE_CHOICE' && template.choices[j]) {
-          for (let k = 0; k < template.choices[j].length; k++) {
+        // Create choices for multiple choice questions (use fallback if none provided)
+        if (questionData.type === 'MULTIPLE_CHOICE') {
+          const provided = template.choices[j];
+          const list = (provided && provided.length > 0)
+            ? provided
+            : fallbackChoiceSets[(j + i) % fallbackChoiceSets.length];
+
+          for (let k = 0; k < list.length; k++) {
             await prisma.choice.create({
               data: {
-                label: template.choices[j][k],
-                value: template.choices[j][k].toLowerCase().replace(/\s+/g, '_'),
+                label: list[k],
+                value: list[k].toLowerCase().replace(/\s+/g, '_'),
                 order: k + 1,
                 questionId: question.id
               }
@@ -272,6 +284,30 @@ async function main() {
   console.log(`- Forms: ${forms.length}`);
   console.log(`- Responses: ${totalResponses}`);
   console.log(`- Estimated response items: ${totalResponses * 5}`); // Average 5 questions per form
+
+  // Safety net: Backfill any existing MULTIPLE_CHOICE without choices
+  const emptyMcq = await prisma.question.findMany({
+    where: {
+      type: 'MULTIPLE_CHOICE',
+      choices: { none: {} }
+    },
+    select: { id: true }
+  });
+
+  for (let idx = 0; idx < emptyMcq.length; idx++) {
+    const q = emptyMcq[idx];
+    const list = fallbackChoiceSets[idx % fallbackChoiceSets.length];
+    for (let k = 0; k < list.length; k++) {
+      await prisma.choice.create({
+        data: {
+          questionId: q.id,
+          label: list[k],
+          value: list[k].toLowerCase().replace(/\s+/g, '_'),
+          order: k + 1
+        }
+      });
+    }
+  }
 }
 
 main()

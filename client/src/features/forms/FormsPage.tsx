@@ -30,8 +30,10 @@ import {
   Public as PublicIcon,
   Lock as LockIcon
 } from '@mui/icons-material'
+import { useAuth } from '../../contexts/AuthContext'
 
 export default function FormsPage() {
+  const { user, isAdmin } = useAuth()
   const [forms, setForms] = useState<Form[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -52,6 +54,7 @@ export default function FormsPage() {
     try {
       setLoading(true)
       const { data } = await http.get('/api/forms')
+      // Show all available forms as returned by the API (public + mine if logged-in)
       setForms(data)
     } catch (e) {
       setError(errMsg(e))
@@ -95,7 +98,7 @@ export default function FormsPage() {
     <Box sx={{ p: 3 }}>
       {/* Header */}
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
-        <Typography variant="h4">My Forms</Typography>
+        <Typography variant="h4">Forms</Typography>
         <Button 
           variant="contained" 
           startIcon={<AddIcon />}
@@ -109,62 +112,127 @@ export default function FormsPage() {
         <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>
       )}
 
-      {/* Forms Grid */}
-      <Grid container spacing={3}>
-        {forms.map((form) => (
-          <Grid item xs={12} md={6} lg={4} key={form.id}>
-            <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <CardContent sx={{ flexGrow: 1 }}>
-                <Stack spacing={2}>
-                  <Box>
-                    <Typography variant="h6" gutterBottom>
-                      {form.title}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                      {form.description || 'No description'}
-                    </Typography>
-                    <Stack direction="row" spacing={1}>
-                      {form.isPublic ? (
+      {/* Public Forms */}
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="h6" sx={{ mb: 1 }}>Public Forms</Typography>
+        <Grid container spacing={3}>
+          {forms.filter(f => f.isPublic).map((form) => (
+            <Grid item xs={12} md={6} lg={4} key={form.id}>
+              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <CardContent sx={{ flexGrow: 1 }}>
+                  <Stack spacing={2}>
+                    <Box>
+                      <Typography variant="h6" gutterBottom>
+                        {form.title}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        {form.description || 'No description'}
+                      </Typography>
+                      <Stack direction="row" spacing={1}>
                         <Chip icon={<PublicIcon />} label="Public" size="small" color="success" />
-                      ) : (
-                        <Chip icon={<LockIcon />} label="Private" size="small" color="default" />
-                      )}
-                      <Chip label={`${form._count?.responses || 0} responses`} size="small" />
-                    </Stack>
-                  </Box>
+                        <Chip label={`${form._count?.responses || 0} responses`} size="small" />
+                      </Stack>
+                    </Box>
 
-                  <Stack direction="row" spacing={1} sx={{ mt: 'auto' }}>
-                    <IconButton 
-                      component={RouterLink} 
-                      to={`/forms/${form.id}`}
-                      color="primary"
-                      size="small"
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton 
-                      component={RouterLink} 
-                      to={`/forms/${form.id}/fill`}
-                      color="info"
-                      size="small"
-                    >
-                      <VisibilityIcon />
-                    </IconButton>
-                    <IconButton 
-                      component={RouterLink} 
-                      to={`/forms/${form.id}/results`}
-                      color="secondary"
-                      size="small"
-                    >
-                      <AnalyticsIcon />
-                    </IconButton>
+                    <Stack direction="row" spacing={1} sx={{ mt: 'auto' }}>
+                      {(user && (form.createdBy?.email === user.email || isAdmin)) && (
+                        <IconButton 
+                          component={RouterLink} 
+                          to={`/forms/${form.id}`}
+                          color="primary"
+                          size="small"
+                        >
+                          <EditIcon />
+                        </IconButton>
+                      )}
+                      <IconButton 
+                        component={RouterLink} 
+                        to={`/forms/${form.id}/fill`}
+                        color="info"
+                        size="small"
+                      >
+                        <VisibilityIcon />
+                      </IconButton>
+                      <IconButton 
+                        component={RouterLink} 
+                        to={`/forms/${form.id}/results`}
+                        color="secondary"
+                        size="small"
+                      >
+                        <AnalyticsIcon />
+                      </IconButton>
+                    </Stack>
                   </Stack>
-                </Stack>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      </Box>
+
+      {/* My Forms */}
+      {user && (
+        <Box>
+          <Typography variant="h6" sx={{ mb: 1 }}>My Forms</Typography>
+          <Grid container spacing={3}>
+            {forms.filter(f => f.createdBy?.email === user.email).map((form) => (
+              <Grid item xs={12} md={6} lg={4} key={form.id}>
+                <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                  <CardContent sx={{ flexGrow: 1 }}>
+                    <Stack spacing={2}>
+                      <Box>
+                        <Typography variant="h6" gutterBottom>
+                          {form.title}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                          {form.description || 'No description'}
+                        </Typography>
+                        <Stack direction="row" spacing={1}>
+                          {form.isPublic ? (
+                            <Chip icon={<PublicIcon />} label="Public" size="small" color="success" />
+                          ) : (
+                            <Chip icon={<LockIcon />} label="Private" size="small" color="default" />
+                          )}
+                          <Chip label={`${form._count?.responses || 0} responses`} size="small" />
+                        </Stack>
+                      </Box>
+
+                      <Stack direction="row" spacing={1} sx={{ mt: 'auto' }}>
+                        {(user && (form.createdBy?.email === user.email || isAdmin)) && (
+                          <IconButton 
+                            component={RouterLink} 
+                            to={`/forms/${form.id}`}
+                            color="primary"
+                            size="small"
+                          >
+                            <EditIcon />
+                          </IconButton>
+                        )}
+                        <IconButton 
+                          component={RouterLink} 
+                          to={`/forms/${form.id}/fill`}
+                          color="info"
+                          size="small"
+                        >
+                          <VisibilityIcon />
+                        </IconButton>
+                        <IconButton 
+                          component={RouterLink} 
+                          to={`/forms/${form.id}/results`}
+                          color="secondary"
+                          size="small"
+                        >
+                          <AnalyticsIcon />
+                        </IconButton>
+                      </Stack>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
           </Grid>
-        ))}
-      </Grid>
+        </Box>
+      )}
 
       {forms.length === 0 && !loading && (
         <Box sx={{ textAlign: 'center', py: 8 }}>

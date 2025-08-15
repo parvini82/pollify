@@ -189,10 +189,14 @@ export default function PublicFillPage() {
     if (!currentQuestion?.required) return true
     
     const answer = answers[currentQuestion.id]
+    // Allow proceeding if MCQ has no options
+    if (currentQuestion.type === 'MULTIPLE_CHOICE' && (!currentQuestion.choices || currentQuestion.choices.length === 0)) {
+      return true
+    }
     if (!answer) return false
     
     if (currentQuestion.type === 'MULTIPLE_CHOICE' && !answer) return false
-    if (currentQuestion.type === 'TEXT' && !answer.trim()) return false
+    if (currentQuestion.type === 'TEXT' && !String(answer).trim()) return false
     if (currentQuestion.type === 'RATING' && !answer) return false
     
     return true
@@ -205,14 +209,17 @@ export default function PublicFillPage() {
       const clientIp = await getClientIP()
       const totalTime = Math.floor((Date.now() - startTime) / 1000)
       
-      const responseItems: Omit<ResponseItem, 'id'>[] = Object.entries(answers).map(([questionId, value]) => ({
-        questionId,
-        valueText: typeof value === 'string' ? value : undefined,
-        valueChoiceId: typeof value === 'string' && value.includes('choice_') ? value : undefined,
-        valueRating: typeof value === 'number' ? value : undefined,
-        timeSpent: timeSpent[questionId] || 0,
-        changedAnswers: answerChanges[questionId] || 0
-      }))
+      const responseItems: Omit<ResponseItem, 'id'>[] = Object.entries(answers).map(([questionId, value]) => {
+        const q = form?.questions.find(q => q.id === questionId)
+        return {
+          questionId,
+          valueText: q?.type === 'TEXT' ? String(value) : undefined,
+          valueChoiceId: q?.type === 'MULTIPLE_CHOICE' ? String(value) : undefined,
+          valueRating: q?.type === 'RATING' ? Number(value) : undefined,
+          timeSpent: timeSpent[questionId] || 0,
+          changedAnswers: answerChanges[questionId] || 0
+        }
+      })
 
       await http.post(`/api/forms/${formId}/responses`, {
         clientIp,
@@ -249,19 +256,23 @@ export default function PublicFillPage() {
         return (
           <FormControl component="fieldset" required={question.required}>
             <FormLabel component="legend">Select an option:</FormLabel>
-            <RadioGroup
-              value={answer || ''}
-              onChange={(e) => handleAnswer(question.id, e.target.value)}
-            >
-              {question.choices?.map((choice) => (
-                <FormControlLabel
-                  key={choice.id}
-                  value={choice.id}
-                  control={<Radio />}
-                  label={choice.label}
-                />
-              ))}
-            </RadioGroup>
+            {(!question.choices || question.choices.length === 0) ? (
+              <Alert severity="warning">No options available for this question.</Alert>
+            ) : (
+              <RadioGroup
+                value={answer || ''}
+                onChange={(e) => handleAnswer(question.id, e.target.value)}
+              >
+                {question.choices?.map((choice) => (
+                  <FormControlLabel
+                    key={choice.id}
+                    value={choice.id}
+                    control={<Radio />}
+                    label={choice.label}
+                  />
+                ))}
+              </RadioGroup>
+            )}
           </FormControl>
         )
         

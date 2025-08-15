@@ -186,7 +186,7 @@ router.post('/forms/:formId/questions', authenticateToken, requireUser, async (r
   } catch (e) { next(e); }
 });
 
-// Add conditional logic to question (owner only)
+// Add conditional logic to question (owner or admin)
 router.post('/questions/:questionId/conditional-logic', authenticateToken, requireUser, async (req, res, next) => {
   try {
     const data = conditionalLogicSchema.parse(req.body);
@@ -201,7 +201,7 @@ router.post('/questions/:questionId/conditional-logic', authenticateToken, requi
       return res.status(404).json({ error: 'Question not found' });
     }
     
-    if (question.form.createdById !== req.user!.id) {
+    if (question.form.createdById !== req.user!.id && req.user!.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Access denied' });
     }
     
@@ -212,7 +212,7 @@ router.post('/questions/:questionId/conditional-logic', authenticateToken, requi
   } catch (e) { next(e); }
 });
 
-// Update conditional logic (owner only)
+// Update conditional logic (owner or admin)
 router.patch('/conditional-logic/:logicId', authenticateToken, requireUser, async (req, res, next) => {
   try {
     const data = conditionalLogicSchema.partial().parse(req.body);
@@ -227,7 +227,7 @@ router.patch('/conditional-logic/:logicId', authenticateToken, requireUser, asyn
       return res.status(404).json({ error: 'Conditional logic not found' });
     }
     
-    if (conditionalLogic.question.form.createdById !== req.user!.id) {
+    if (conditionalLogic.question.form.createdById !== req.user!.id && req.user!.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Access denied' });
     }
     
@@ -239,10 +239,10 @@ router.patch('/conditional-logic/:logicId', authenticateToken, requireUser, asyn
   } catch (e) { next(e); }
 });
 
-// Get form responses (owner only)
+// Get form responses (owner or admin)
 router.get('/forms/:formId/responses', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    // Check if user owns the form
+    // Check if user owns the form or is admin
     const existingForm = await prisma.form.findUnique({
       where: { id: req.params.formId }
     });
@@ -251,7 +251,7 @@ router.get('/forms/:formId/responses', authenticateToken, requireUser, async (re
       return res.status(404).json({ error: 'Form not found' });
     }
     
-    if (existingForm.createdById !== req.user!.id) {
+    if (existingForm.createdById !== req.user!.id && req.user!.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Access denied' });
     }
     
@@ -390,10 +390,10 @@ router.post('/forms/:formId/responses', optionalAuth, async (req, res, next) => 
   } catch (e) { next(e); }
 });
 
-// Get behavioral analysis (owner only)
+// Get behavioral analysis (owner or admin)
 router.get('/forms/:formId/behavioral-analysis', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    // Check if user owns the form
+    // Check if user owns the form or is admin
     const existingForm = await prisma.form.findUnique({
       where: { id: req.params.formId }
     });
@@ -402,7 +402,7 @@ router.get('/forms/:formId/behavioral-analysis', authenticateToken, requireUser,
       return res.status(404).json({ error: 'Form not found' });
     }
     
-    if (existingForm.createdById !== req.user!.id) {
+    if (existingForm.createdById !== req.user!.id && req.user!.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Access denied' });
     }
     
